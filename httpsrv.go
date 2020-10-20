@@ -2,23 +2,28 @@
 // Use of this source code is governed under the Apache License, Version 2.0
 // that can be found in the LICENSE file.
 
+// Minimalist JSON API server.
+
 package main
 
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"reflect"
 	"strings"
 	"time"
 
 	"github.com/maruel/serve-dir/loghttp"
 )
 
+// methodOnly return 405 if the method is not in the allow list.
 func methodOnly(f http.HandlerFunc, methods ...string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		for _, m := range methods {
@@ -51,55 +56,69 @@ func jsonOnly(f http.HandlerFunc) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		f(w, req)
 	})
-	return methodOnly(f, http.MethodGet)
+	return methodOnly(f, http.MethodPost)
 }
 
-// Example
-
-type logRequest struct {
-	Name string `json:"name"`
-}
-
-type logResult struct {
-	Status int `json:"status"`
-}
-
-func apiJSON(w http.ResponseWriter, req *http.Request) {
-	data, err := ioutil.ReadAll(req.Body)
-	req.Body.Close()
-	if err != nil {
-		http.Error(w, "Bad request", http.StatusBadRequest)
-		return
+// jsonAPI handles a function, using reflection.
+//
+// The function passed in must have the form, panics otherwise:
+//  foo(out *TypeIn, in *TypeOut) int
+//
+// The return value must be an HTTP code to return. Normally should be
+// http.StatusOK (200).
+func jsonAPI(f interface{}) http.HandlerFunc {
+	v := reflect.ValueOf(f)
+	t := v.Type()
+	if t.Kind() != reflect.Func || t.NumIn() != 2 || t.NumOut() != 1 {
+		panic("function must have two inputs, zero outputs")
 	}
-
-	in := logRequest{}
-	if err := json.Unmarshal(data, &in); err != nil {
-		http.Error(w, "Bad request", http.StatusBadRequest)
-		return
+	outT := t.In(0)
+	inT := t.In(1)
+	if outT.Kind() != reflect.Ptr {
+		panic("out must be pointer to struct")
 	}
-
-	out := logResult{}
-	switch in.Name {
-	case "stdout":
-		out.Status = 1
-	case "stderr":
-		out.Status = 2
-	default:
-		out.Status = 3
+	if outT = outT.Elem(); outT.Kind() != reflect.Struct {
+		panic("out must be pointer to struct")
 	}
-	d, _ := json.Marshal(&out)
-	w.Write(d)
+	if inT.Kind() != reflect.Ptr {
+		panic("in must be pointer to struct")
+	}
+	if inT = inT.Elem(); inT.Kind() != reflect.Struct {
+		panic("in must be pointer to struct")
+	}
+	if t.Out(0).Kind() != reflect.Int {
+		panic("return value must be integer")
+	}
+	h := func(w http.ResponseWriter, req *http.Request) {
+		data, err := ioutil.ReadAll(req.Body)
+		req.Body.Close()
+		if err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		in := reflect.New(inT)
+		if err := json.Unmarshal(data, in.Interface()); err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+
+		out := reflect.New(outT)
+		args := []reflect.Value{out, in}
+		ret := v.Call(args)
+		d, _ := json.Marshal(out.Interface())
+		w.WriteHeader(int(ret[0].Int()))
+		w.Write(d)
+	}
+	return jsonOnly(h)
 }
 
-func main() {
+func mainImpl() error {
 	chanSignal := make(chan os.Signal)
-	quitHandler := func(w http.ResponseWriter, req *http.Request) {
-		chanSignal <- os.Interrupt
-	}
-
 	mux := http.NewServeMux()
-	mux.HandleFunc("/quitquitquit", getOnly(quitHandler))
-	mux.HandleFunc("/api/log", jsonOnly(apiJSON))
+
+	// Load our example:
+	registerHandlers(mux, chanSignal)
+
 	s := &http.Server{
 		// loghttp is optional but really helpful:
 		Handler:        &loghttp.Handler{Handler: mux},
@@ -111,7 +130,7 @@ func main() {
 	port := ":8081"
 	ln, err := net.Listen("tcp", port)
 	if err != nil {
-		log.Fatalf("Failed to listen on %s: %v", port, err)
+		return err
 	}
 	go func() {
 		<-chanSignal
@@ -124,4 +143,12 @@ func main() {
 	log.Printf("Serving on %s", port)
 	s.Serve(ln)
 	log.Printf("Quitting")
+	return nil
+}
+
+func main() {
+	if err := mainImpl(); err != nil {
+		fmt.Fprintf(os.Stderr, "go-webserver-skeleton: %s\n", err)
+		os.Exit(1)
+	}
 }
