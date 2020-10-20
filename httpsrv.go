@@ -49,14 +49,13 @@ func MustGet(f http.HandlerFunc) http.HandlerFunc {
 // MustJSON enforces JSON POST RPCs.
 func MustJSON(f http.HandlerFunc) http.HandlerFunc {
 	return MustPost(func(w http.ResponseWriter, req *http.Request) {
-		if strings.HasPrefix(req.Header.Get("Content-Type"), "application/json") {
-			http.Error(w, "Content type", http.StatusBadRequest)
+		if !strings.HasPrefix(req.Header.Get("Content-Type"), "application/json") {
+			http.Error(w, "Content type must be application/json", http.StatusBadRequest)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		f(w, req)
 	})
-	return MustMethod(f, http.MethodPost)
 }
 
 // JsonAPI handles a function, using reflection.
@@ -89,7 +88,7 @@ func JsonAPI(f interface{}) http.HandlerFunc {
 	if t.Out(0).Kind() != reflect.Int {
 		panic("return value must be integer")
 	}
-	h := func(w http.ResponseWriter, req *http.Request) {
+	return MustJSON(func(w http.ResponseWriter, req *http.Request) {
 		data, err := ioutil.ReadAll(req.Body)
 		req.Body.Close()
 		if err != nil {
@@ -108,8 +107,7 @@ func JsonAPI(f interface{}) http.HandlerFunc {
 		d, _ := json.Marshal(out.Interface())
 		w.WriteHeader(int(ret[0].Int()))
 		w.Write(d)
-	}
-	return MustJSON(h)
+	})
 }
 
 func mainImpl() error {

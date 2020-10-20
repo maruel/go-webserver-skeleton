@@ -15,20 +15,26 @@ function req {
 }
 
 echo "- Manual marshaling:"
-req -d '{"name":"stdout"}' http://localhost:8081/api/log/manual
-req -d '{"name":"stderr"}' http://localhost:8081/api/log/manual
-# Handler refuses this request:
-req -d '{}' http://localhost:8081/api/log/manual
-# GET is disallowed:
-req http://localhost:8081/api/log/manual
+URL=http://localhost:8081/api/log/manual
+req -H "Content-Type: application/json" -d '{"name":"stdout"}' $URL
+req -H "Content-Type: application/json" -d '{"name":"stderr"}' $URL
+echo "  Handler refuses this request:"
+req -H "Content-Type: application/json" -d '{"foo":"bar"}' $URL
+echo "  GET is disallowed:"
+req -H "Content-Type: application/json" $URL
+echo "  Incorrect Content-Type:"
+req -H "Content-Type: application/octet-steam" -d '{"name":"stderr"}' $URL
 
 echo "- With reflection based API:"
-req -d '{"name":"stdout"}' http://localhost:8081/api/log/auto
-req -d '{"name":"stderr"}' http://localhost:8081/api/log/auto
-# Handler refuses this request:
-req -d '{}' http://localhost:8081/api/log/auto
-# GET is disallowed:
-req http://localhost:8081/api/log/auto
+URL=http://localhost:8081/api/log/auto
+req -H "Content-Type: application/json" -d '{"name":"stdout"}' $URL
+req -H "Content-Type: application/json" -d '{"name":"stderr"}' $URL
+echo "  Handler refuses this request:"
+req -H "Content-Type: application/json" -d '{"foo":"bar"}' $URL
+echo "  GET is disallowed:"
+req -H "Content-Type: application/json" $URL
+echo "  Incorrect Content-Type:"
+req -H "Content-Type: application/octet-steam" -d '{"name":"stderr"}' $URL
 
 echo "- Quitting"
 curl http://localhost:8081/quitquitquit
