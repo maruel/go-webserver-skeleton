@@ -23,8 +23,8 @@ import (
 	"github.com/maruel/serve-dir/loghttp"
 )
 
-// methodOnly return 405 if the method is not in the allow list.
-func methodOnly(f http.HandlerFunc, methods ...string) http.HandlerFunc {
+// MustMethod return 405 if the method is not in the allow list.
+func MustMethod(f http.HandlerFunc, methods ...string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		for _, m := range methods {
 			if req.Method == m {
@@ -36,19 +36,19 @@ func methodOnly(f http.HandlerFunc, methods ...string) http.HandlerFunc {
 	}
 }
 
-// postOnly enforces POST HTTP method.
-func postOnly(f http.HandlerFunc) http.HandlerFunc {
-	return methodOnly(f, http.MethodPost)
+// MustPost enforces POST HTTP method.
+func MustPost(f http.HandlerFunc) http.HandlerFunc {
+	return MustMethod(f, http.MethodPost)
 }
 
-// getOnly enforces GET HTTP method.
-func getOnly(f http.HandlerFunc) http.HandlerFunc {
-	return methodOnly(f, http.MethodGet)
+// MustGet enforces GET HTTP method.
+func MustGet(f http.HandlerFunc) http.HandlerFunc {
+	return MustMethod(f, http.MethodGet)
 }
 
-// jsonOnly enforces JSON POST RPCs.
-func jsonOnly(f http.HandlerFunc) http.HandlerFunc {
-	return postOnly(func(w http.ResponseWriter, req *http.Request) {
+// MustJSON enforces JSON POST RPCs.
+func MustJSON(f http.HandlerFunc) http.HandlerFunc {
+	return MustPost(func(w http.ResponseWriter, req *http.Request) {
 		if strings.HasPrefix(req.Header.Get("Content-Type"), "application/json") {
 			http.Error(w, "Content type", http.StatusBadRequest)
 			return
@@ -56,17 +56,17 @@ func jsonOnly(f http.HandlerFunc) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		f(w, req)
 	})
-	return methodOnly(f, http.MethodPost)
+	return MustMethod(f, http.MethodPost)
 }
 
-// jsonAPI handles a function, using reflection.
+// JsonAPI handles a function, using reflection.
 //
 // The function passed in must have the form, panics otherwise:
-//  foo(out *TypeIn, in *TypeOut) int
+//  foo(out *TypeOut, in *TypeIn) int
 //
 // The return value must be an HTTP code to return. Normally should be
 // http.StatusOK (200).
-func jsonAPI(f interface{}) http.HandlerFunc {
+func JsonAPI(f interface{}) http.HandlerFunc {
 	v := reflect.ValueOf(f)
 	t := v.Type()
 	if t.Kind() != reflect.Func || t.NumIn() != 2 || t.NumOut() != 1 {
@@ -109,7 +109,7 @@ func jsonAPI(f interface{}) http.HandlerFunc {
 		w.WriteHeader(int(ret[0].Int()))
 		w.Write(d)
 	}
-	return jsonOnly(h)
+	return MustJSON(h)
 }
 
 func mainImpl() error {

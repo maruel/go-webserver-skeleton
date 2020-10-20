@@ -60,7 +60,7 @@ func registerHandlers(mux *http.ServeMux, c chan os.Signal) {
 	quitHandler := func(w http.ResponseWriter, req *http.Request) {
 		c <- os.Interrupt
 	}
-	mux.HandleFunc("/quitquitquit", getOnly(quitHandler))
-	mux.HandleFunc("/api/log/manual", jsonOnly(apiJSONManual))
-	mux.HandleFunc("/api/log/auto", jsonAPI(apiJSONAuto))
+	mux.HandleFunc("/quitquitquit", MustGet(quitHandler))
+	mux.HandleFunc("/api/log/manual", MustJSON(apiJSONManual))
+	mux.HandleFunc("/api/log/auto", JsonAPI(apiJSONAuto))
 }
